@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "messageQueue.h"
+#include "queue.h"
 
 #define CLOCK_INC 100000000 //sample number, this is a constent. Experiment with it
 #define MAX_TIME_BETWEEN_NEW_PROCESSES_NS 999999999
@@ -16,8 +17,9 @@
 
 struct PCB {
 	//char data[100][80];
-	int dummy;
 	int myPID; //your local simulated pid
+	int timeCreatedSecs;
+	int timeCreatedNano;
 	int totalCpuTimeUsed;
 	int totalTimeInSystem;
 	int timeUsedLastBurst;
@@ -57,15 +59,15 @@ int main(int argc, char *argv[]) {
 	int maxKidsAtATime = 1; //will be set by the "S" command line argument. Default should probably be 18, but for us we are using 1 for early testing...
 	struct PCB PCT[maxKidsAtATime]; //here we have a table of maxNum blocks
 	
-	//PCT[0].dummy = 4;
-	//printf("we stored %d in the dummy field\n", PCT[0].dummy);
-	
 	//our "bit vector" (or boolean array here) that will tell us which PRB are free
 	bool boolArray[maxKidsAtATime]; //by default, these are all set to false. This has been tested and verified
 	int i;
 	for (i = 0; i < sizeof(boolArray); i++) {
 		printf("Is PCB #%d being used? %d \n", i, boolArray[i]);
 	}
+	
+	//set up our process queue
+	struct Queue* queue = createQueue(maxKidsAtATime); //note: queue is the name of the queue. It is of type Queue, qhich is defined in queue.h. Pass in the max size
 	
 	//set up our messageQueue
 	key_t key; 
@@ -127,35 +129,25 @@ int main(int argc, char *argv[]) {
 					}
 					else if (pid > 0) { //parent
 						printf("Created child %d at %d:%d\n", pid, clockSeconds, clockNano);
-						//let's send him a message
-						message.mesg_type = pid; //send a message to this specific child, and no other
-						//message.mesg_text = "go";
-						strncpy(message.mesg_text, "go", 100);
-						message.return_address = getpid(); //tell them who sent it
-						// msgsnd to send message 
-						printf("child will do nothing until we let it\n");
-						printf("sending message for child to activate\n");
-						int send = msgsnd(msgid, &message, sizeof(message), 0);
-						if (send == -1) {
-							perror("Error on msgsnd\n");
-						}
-						//now we wait to receive a response
-						int receive;
-						receive = msgrcv(msgid, &message, sizeof(message), getpid(), 0); 
-						if (receive < 0) {
-							perror("No message received\n");
-						}
-						else {
-							printf("Data Received is : %s \n", message.mesg_text); 
-							printf("parent is now in control again\n");
-						}
+						//let's populate the control block with our data
+						PCT[openSlot].myPID = pid;
+						PCT[openSlot].processPriority = 0; //for now, we'll just use one highest priority queue.....
+						//note you may not need the next two lines... just experimenting
+						PCT[openSlot].timeCreatedSecs = clockSeconds;
+						PCT[openSlot].timeCreatedNano = clockNano;
+						PCT[openSlot].totalCpuTimeUsed = 0;
+						PCT[openSlot].totalTimeInSystem = 0;
+						PCT[openSlot].timeUsedLastBurst = 0;
+						enqueue(queue, pid); //add this process to the queue
+						//this should be everything set up.
+						
+						//oringinally sent message here. Moved it down below
 						continue;
 					}
 					else {
 						//Error
 					}
 				}
-		
 			}
 		}
 		//increment clock
@@ -165,13 +157,63 @@ int main(int argc, char *argv[]) {
 			clockNano -= 1000000000;
 		}
 		//check to see if we should start a process
+		if (!isEmpty(queue)) {
+			//queue is not empty. Thus we should run something
+			int nextPID = dequeue(queue); //decide the next process to run. Here it's simple with only one queue. Later this will require more attention
+			
+			//let's send this process a message
+			message.mesg_type = nextPID; //send a message to this specific child, and no other
+			strncpy(message.mesg_text, "go", 100); //right now we're just sending "go" later on we'll have to be more specific
+			message.return_address = getpid(); //tell them who sent it
+			// msgsnd to send message 
+			printf("child will do nothing until we let it\n");
+			printf("sending message for child to activate\n");
+			int send = msgsnd(msgid, &message, sizeof(message), 0);
+			if (send == -1) {
+				perror("Error on msgsnd\n");
+			}
+			//now we wait to receive a response
+			int receive;
+			int returnValue;
+			receive = msgrcv(msgid, &message, sizeof(message), getpid(), 0); //wait for message back. OSS does nothing until then
+			if (receive < 0) {
+				perror("No message received\n");
+			} else {
+				printf("Data Received is : %s \n", message.mesg_text); //later on we'll have to process the response
+				returnValue = message.mesg_value;
+				printf("parent is now in control again\n");
+			}
+			//determine what to do with this pid. If it's done, do nothing. Else, send it back in.
+			//int choice = randomNum(2); //note, the random stuff will have to happen in user, not here. But for testing today, let's do it here
+			if (returnValue == 0) {
+				//let's assume for now we are done
+				//deallocate resources and continue
+				printf("Process %d is finished\n", nextPID);
+				//find out which boolArray position needs to be free
+				int j;
+				for (j = 0; j < sizeof(PCT); j++) {
+					if (PCT[j].myPID == nextPID) {
+						boolArray[j] = 0;
+						printf("We are deallocating the value at boolArray[%d]\n", j);
+						break;
+					}
+				}
+			} else if (returnValue == 1){
+				//let's assume for now we are not done
+				printf("Process %d is not complete and is going back in the end of the queue\n", nextPID);
+				enqueue(queue, nextPID);//add again to the back of the queue
+			} else {
+				perror("ERROR! Invalid return value!");
+			}
+		}
+		//process return value and continue
 	}
 	printf("We leave at %d:%d\n", clockSeconds, clockNano);
 	
 	//close message queue
 	msgctl(msgid, IPC_RMID, NULL); 
 	printf("That concludes this portion of the in-development program\n");
-	printf("To avoid warnings, let's use values: %d \n", PCT[0].dummy);
+	printf("To avoid warnings, let's use values: %d \n", PCT[0].myPID);
 	printf("End of program\n");
 	return 0;
 }
