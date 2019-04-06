@@ -2,6 +2,12 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include <sys/ipc.h> 
+#include <sys/msg.h> 
+#include <sys/types.h>
+#include <unistd.h>
+#include <string.h>
+#include "messageQueue.h"
 
 #define CLOCK_INC 100000000 //sample number, this is a constent. Experiment with it
 #define MAX_TIME_BETWEEN_NEW_PROCESSES_NS 999999999
@@ -24,6 +30,7 @@ int randomNum(int max) {
 	return num;
 }
 
+//checks our boolArray for an open slot to save the process. Returns -1 if none exist
 int checkForOpenSlot(bool boolArray[], int maxKidsAtATime) {
 	int j;
 	for (j = 0; j < maxKidsAtATime; j++) {
@@ -41,17 +48,16 @@ int main(int argc, char *argv[]) {
 	printf("Welcome to project 4\n");
 	srand(time(0)); //placed here so we can generate random numbers later on
 	
-	
 	//we need a clock
 	int clockSeconds = 0;
 	int clockNano = 0;
 	int clockInc = CLOCK_INC; 
 	
 	//we need our process control table
-	int maxKidsAtATime = 18; //will be set by the "S" command line argument
+	int maxKidsAtATime = 1; //will be set by the "S" command line argument. Default should probably be 18, but for us we are using 1 for early testing...
 	struct PCB PCT[maxKidsAtATime]; //here we have a table of maxNum blocks
 	
-	PCT[0].dummy = 4;
+	//PCT[0].dummy = 4;
 	//printf("we stored %d in the dummy field\n", PCT[0].dummy);
 	
 	//our "bit vector" (or boolean array here) that will tell us which PRB are free
@@ -61,12 +67,24 @@ int main(int argc, char *argv[]) {
 		printf("Is PCB #%d being used? %d \n", i, boolArray[i]);
 	}
 	
+	//set up our messageQueue
+	key_t key; 
+    int msgid; 
+  
+    key = 1094;
+  
+    // msgget creates a message queue and returns identifier 
+    msgid = msgget(key, 0666 | IPC_CREAT);  //create the message queue
+	if (msgid < 0) {
+		printf("Error, msgid equals %d\n", msgid);
+	}
+	//we are now ready to send messages whenever we desire
+	
 	//sample of the OSS loop
 	int startSeconds, startNano, stopSeconds, stopNano, durationSeconds, durationNano;
 	bool prepNewChild = false;
 	
-	
-	for (i = 0; i < 300; i++) {
+	for (i = 0; i < 50; i++) {
 		printf("The current time is %d:%d\n", clockSeconds, clockNano);
 		//printf("Random wait time of the day is %d:%d\n", randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_SECS), randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_NS));
 		//printf("is there a child prepped? %d\n", prepNewChild);
@@ -99,6 +117,43 @@ int main(int argc, char *argv[]) {
 					//now actually store it in said slot
 					boolArray[openSlot] = true; //first claim that spot
 					//then set all values to that PCB - this still needs to be done
+					//also actually launch the child
+					pid_t pid;
+					pid = fork();
+					
+					if (pid == 0) { //child
+						execl ("user", "user", NULL);
+						perror("execl failed. \n");
+					}
+					else if (pid > 0) { //parent
+						printf("Created child %d at %d:%d\n", pid, clockSeconds, clockNano);
+						//let's send him a message
+						message.mesg_type = pid; //send a message to this specific child, and no other
+						//message.mesg_text = "go";
+						strncpy(message.mesg_text, "go", 100);
+						message.return_address = getpid(); //tell them who sent it
+						// msgsnd to send message 
+						printf("child will do nothing until we let it\n");
+						printf("sending message for child to activate\n");
+						int send = msgsnd(msgid, &message, sizeof(message), 0);
+						if (send == -1) {
+							perror("Error on msgsnd\n");
+						}
+						//now we wait to receive a response
+						int receive;
+						receive = msgrcv(msgid, &message, sizeof(message), getpid(), 0); 
+						if (receive < 0) {
+							perror("No message received\n");
+						}
+						else {
+							printf("Data Received is : %s \n", message.mesg_text); 
+							printf("parent is now in control again\n");
+						}
+						continue;
+					}
+					else {
+						//Error
+					}
 				}
 		
 			}
@@ -113,7 +168,8 @@ int main(int argc, char *argv[]) {
 	}
 	printf("We leave at %d:%d\n", clockSeconds, clockNano);
 	
-	
+	//close message queue
+	msgctl(msgid, IPC_RMID, NULL); 
 	printf("That concludes this portion of the in-development program\n");
 	printf("To avoid warnings, let's use values: %d \n", PCT[0].dummy);
 	printf("End of program\n");
