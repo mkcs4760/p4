@@ -13,9 +13,9 @@
 	return num;
 }*/
 
-//returns either 1 or 2 at random
+//25% chance of returning 0, 75% chance of returning 1
 int randomNum() {
-	int num = rand() % 2;
+	int num = rand() % 4;
 	if (num == 0)
 		return 0;
 	else	
@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
 		message.mesg_type = returnTo; //send a message to this specific child, and no other
 		
 		int choice = randomNum();// get a random choice. This will be modified later, don't worry about it for now
-		if (choice == 1) {
+		if (choice == 0) {
 			//let's assume for now we are done
 			//deallocate resources and continue
 			printf("Process %d is finished.\n", getpid());
@@ -66,6 +66,7 @@ int main(int argc, char *argv[]) {
 			terminate = 1;
 		} else {
 			//let's assume for now we are not done
+			//NOTE, LATER ON WE'LL HAVE TO DISTINGUISH BETWEEN BLOCKED AND NOT BLOCKED!!!!!
 			printf("Process %d is not complete!\n", getpid());
 			strncpy(message.mesg_text, "notDone", 100);
 			message.mesg_value = 1; //0 means done

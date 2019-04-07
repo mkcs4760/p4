@@ -93,7 +93,6 @@ int main(int argc, char *argv[]) {
 	int processesLaunched = 0;
 	int processesRunning = 0;
 	int done = 0;
-	int loopCount = 0;
 	
 	while (!done) {
 		printf("The current time is %d:%d\n", clockSeconds, clockNano);
@@ -140,7 +139,9 @@ int main(int argc, char *argv[]) {
 						perror("execl failed. \n");
 					}
 					else if (pid > 0) { //parent
-						printf("Created child %d at %d:%d\n", pid, clockSeconds, clockNano);
+						printf("OSS: Generating process with PID %d and putting it in queue %d at time %d:%d\n", pid, 0, clockSeconds, clockNano);
+						//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
+						
 						//let's populate the control block with our data
 						PCT[openSlot].myPID = pid;
 						PCT[openSlot].processPriority = 0; //for now, we'll just use one highest priority queue.....
@@ -179,7 +180,10 @@ int main(int argc, char *argv[]) {
 			message.return_address = getpid(); //tell them who sent it
 			// msgsnd to send message 
 			//printf("child will do nothing until we let it\n");
-			printf("Sending message to activate child %d\n", nextPID);
+			
+			printf("OSS : Dispatching process with PID %d from queue %d at time %d:%d\n", nextPID, 0, clockSeconds, clockNano);
+			//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
+			
 			int send = msgsnd(msgid, &message, sizeof(message), 0);
 			if (send == -1) {
 				perror("Error on msgsnd\n");
@@ -215,6 +219,9 @@ int main(int argc, char *argv[]) {
 				//let's assume for now we are not done
 				printf("Process %d was not completed and is going back in the end of the queue\n", nextPID);
 				enqueue(queue, nextPID);//add again to the back of the queue
+				printf("OSS : Putting process with PID %d into queue %d\n", nextPID, 0);
+				//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
+				
 			} else {
 				perror("ERROR! Invalid return value!");
 			}
@@ -223,7 +230,7 @@ int main(int argc, char *argv[]) {
 		//process return value and continue
 		//loopCount++;
 		//now we check to see if we are done
-		if ((processesLaunched > 9 && processesRunning == 0) || loopCount > 99) {
+		if (processesLaunched > 9 && processesRunning == 0) { //terminates when we've launched and completed 10 processes.
 			done = 1;
 			printf("We are done with our loop\n");
 		}
