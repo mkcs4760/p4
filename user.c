@@ -48,11 +48,10 @@ int main(int argc, char *argv[]) {
 		if (receive < 0) {
 			perror("No message received\n");
 		} else {
-			printf("Child Received message : %s \n", message.mesg_text); 
-			printf("Yay! This is the child and now I am allowed to run!\n");
+			printf("Child %d Received message : %s \n", getpid(), message.mesg_text); 
 		}
 		
-			int returnTo = message.return_address;
+		int returnTo = message.return_address;
 		//now send a response
 		
 		message.mesg_type = returnTo; //send a message to this specific child, and no other
@@ -61,31 +60,29 @@ int main(int argc, char *argv[]) {
 		if (choice == 1) {
 			//let's assume for now we are done
 			//deallocate resources and continue
-			printf("Process %d is finished\n", getpid());
+			printf("Process %d is finished.\n", getpid());
 			strncpy(message.mesg_text, "done", 100);
 			message.mesg_value = 0; //0 means done
 			terminate = 1;
 		} else {
 			//let's assume for now we are not done
-			printf("Process %d is not complete!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n", getpid());
+			printf("Process %d is not complete!\n", getpid());
 			strncpy(message.mesg_text, "notDone", 100);
 			message.mesg_value = 1; //0 means done
 		}	
 		
 		message.return_address = getpid(); //tell them who sent it
 		// msgsnd to send message 
-		printf("I give control back to parent process\n");
+		printf("Process %d sends message and gives control back to parent process\n", getpid());
 		int send = msgsnd(msgid, &message, sizeof(message), 0);
 		if (send == -1) {
 			perror("Error on msgsnd\n");
 		}
 
 	}
+		
 	
-
-	
-	
-	printf("ending child process\n");
+	printf("ending child process %d\n", getpid());
 	
 	return 0;
 }
