@@ -201,8 +201,7 @@ int main(int argc, char *argv[]) {
 			}
 			//determine what to do with this pid. If it's done, do nothing. Else, send it back in.
 			//int choice = randomNum(2); //note, the random stuff will have to happen in user, not here. But for testing today, let's do it here
-			if (returnValue == 0) {
-				//let's assume for now we are done
+			if (returnValue > 0) { //we are done
 				//deallocate resources and continue
 				printf("Process %d was finished\n", nextPID);
 				//find out which boolArray position needs to be free
@@ -215,13 +214,23 @@ int main(int argc, char *argv[]) {
 					}
 				}
 				processesRunning--;
-			} else if (returnValue == 1){
-				//let's assume for now we are not done
-				printf("Process %d was not completed and is going back in the end of the queue\n", nextPID);
+				//increment clock by correct amount of time
+				printf("Return value was %d, meaning we need to increment our clock by %d0 percent of the value sent to the child\n", returnValue, returnValue);
+				//NOTE: CAN'T REALLY DO THIS UNTIL THE PARENT ACTUALLY SENDS TIME VALUE TO CHILD - SO MAKE THAT THE NEXT STEP!!
+				//THEN GO BACK AND INCREMENT THE CLOCK HERE!!
+			} else if (returnValue < 0) { //we are not done. We were blocked and that needs to be accounted for here
+				printf("Process %d was mpt finished. It was blocked\n", nextPID);
+				//here is where we move it to the blocked queue. For now, we just add it back to the same queue
+				enqueue(queue, nextPID); //this will need to be changed to the block queue
+				//here is where we increment clock by the correct amount
+				//THE TWO LINES ABOVE NEED TO BE IMPLEMENTED ONCE OTHER FEATURES ARE IMPLEMENTED	
+			} else if (returnValue == 0) { //we are not done, but we used 100% of our time. Therefore, we were not blocked.
+				printf("Process %d was not finished, but used all of it's name\n", nextPID);
+				//move it to the back of the queue
 				enqueue(queue, nextPID);//add again to the back of the queue
 				printf("OSS : Putting process with PID %d into queue %d\n", nextPID, 0);
 				//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
-				
+				//THIS IS WHERE WE INCREMENT THE CLOCK BY THE CORRECT AMOUNT OF TIME
 			} else {
 				perror("ERROR! Invalid return value!");
 			}
