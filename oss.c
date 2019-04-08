@@ -14,6 +14,11 @@
 #define MAX_TIME_BETWEEN_NEW_PROCESSES_NS 999999999
 #define MAX_TIME_BETWEEN_NEW_PROCESSES_SECS 1 //we will create a new user process at a random interval between 0 and these values
 
+#define TIMESLICE0 10
+#define TIMESLICE1 2*TIMESLICE0
+#define TIMESLICE2 2*TIMESLICE1
+#define TIMESLICE3 2*TIMESLICE2
+	
 
 struct PCB {
 	//char data[100][80];
@@ -30,6 +35,19 @@ struct PCB {
 int randomNum(int max) {
 	int num = (rand() % (max + 1));
 	return num;
+}
+
+//we need a clock. These are set as globals since that allows us to easily implement an incrementClock function.
+int clockSeconds = 0;
+int clockNano = 0;
+int clockInc = CLOCK_INC; 
+void incrementClock(int inc) {
+	clockNano += inc;
+	if (clockNano >= 1000000000) { //increment the next unit
+		clockSeconds += 1;
+		clockNano -= 1000000000;
+	}
+	printf("The current time is %d:%d\n", clockSeconds, clockNano);
 }
 
 //checks our boolArray for an open slot to save the process. Returns -1 if none exist
@@ -50,10 +68,13 @@ int main(int argc, char *argv[]) {
 	printf("Welcome to project 4\n");
 	srand(time(0)); //placed here so we can generate random numbers later on
 	
-	//we need a clock
-	int clockSeconds = 0;
-	int clockNano = 0;
-	int clockInc = CLOCK_INC; 
+	//set up our time values
+	//int timeSlice0 = 10;
+	//int timeSlice1 = 2 * timeSlice0;
+	//int timeSlice2 = 2 * timeSlice1;
+	//int timeSlice3 = 2 * timeSlice2;
+	
+	
 	
 	//we need our process control table
 	int maxKidsAtATime = 2; //will be set by the "S" command line argument. Default should probably be 18, but for us we are using 1 for early testing...
@@ -95,7 +116,7 @@ int main(int argc, char *argv[]) {
 	int done = 0;
 	
 	while (!done) {
-		printf("The current time is %d:%d\n", clockSeconds, clockNano);
+		//printf("The current time is %d:%d\n", clockSeconds, clockNano);
 		//printf("Random wait time of the day is %d:%d\n", randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_SECS), randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_NS));
 		//printf("is there a child prepped? %d\n", prepNewChild);
 		if (prepNewChild == false) {
@@ -163,14 +184,10 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
-		//increment clock
-		clockNano += clockInc;
-		if (clockNano >= 1000000000) { //increment the next unit
-			clockSeconds += 1;
-			clockNano -= 1000000000;
-		}
+		incrementClock(clockInc); //increment clock
 		//check to see if we should start a process
 		if (!isEmpty(queue)) {
+			int whichQueueInUse = 0; //this value will vary 0-3 depending upon which queue we are launching a process from
 			//queue is not empty. Thus we should run something
 			int nextPID = dequeue(queue); //decide the next process to run. Here it's simple with only one queue. Later this will require more attention
 			
@@ -215,7 +232,16 @@ int main(int argc, char *argv[]) {
 				}
 				processesRunning--;
 				//increment clock by correct amount of time
-				printf("Return value was %d, meaning we need to increment our clock by %d0 percent of the value sent to the child\n", returnValue, returnValue);
+				if (whichQueueInUse == 0) {
+					double percentUsed = 0.1 * returnValue; //this should give us the percentage
+					printf("This process has used %f of it's time slice.\n", percentUsed);
+					int timeUsed = percentUsed * TIMESLICE0;
+					printf("Therefore, we will increment our clock by %d\n", timeUsed);
+					incrementClock(timeUsed);
+					
+				}
+				//include values for the other queues
+				//printf("Return value was %d, meaning we need to increment our clock by %d0 percent of the value sent to the child\n", returnValue, returnValue);
 				//NOTE: CAN'T REALLY DO THIS UNTIL THE PARENT ACTUALLY SENDS TIME VALUE TO CHILD - SO MAKE THAT THE NEXT STEP!!
 				//THEN GO BACK AND INCREMENT THE CLOCK HERE!!
 			} else if (returnValue < 0) { //we are not done. We were blocked and that needs to be accounted for here
@@ -223,7 +249,14 @@ int main(int argc, char *argv[]) {
 				//here is where we move it to the blocked queue. For now, we just add it back to the same queue
 				enqueue(queue, nextPID); //this will need to be changed to the block queue
 				//here is where we increment clock by the correct amount
-				//THE TWO LINES ABOVE NEED TO BE IMPLEMENTED ONCE OTHER FEATURES ARE IMPLEMENTED	
+				if (whichQueueInUse == 0) {
+					double percentUsed = -0.1 * returnValue; //this should give us the positive percentage
+					printf("This process has used %f of it's time slice.\n", percentUsed);
+					int timeUsed = percentUsed * TIMESLICE0;
+					printf("Therefore, we will increment our clock by %d\n", timeUsed);
+					incrementClock(timeUsed);
+				}
+				//THE LINES ABOVE NEED TO BE IMPLEMENTED ONCE OTHER FEATURES ARE IMPLEMENTED	
 			} else if (returnValue == 0) { //we are not done, but we used 100% of our time. Therefore, we were not blocked.
 				printf("Process %d was not finished, but used all of it's name\n", nextPID);
 				//move it to the back of the queue
@@ -231,6 +264,9 @@ int main(int argc, char *argv[]) {
 				printf("OSS : Putting process with PID %d into queue %d\n", nextPID, 0);
 				//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
 				//THIS IS WHERE WE INCREMENT THE CLOCK BY THE CORRECT AMOUNT OF TIME
+				if (whichQueueInUse == 0) {
+					incrementClock(TIMESLICE0); //this increments the clock
+				}
 			} else {
 				perror("ERROR! Invalid return value!");
 			}
