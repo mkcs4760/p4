@@ -63,10 +63,10 @@ int checkForOpenSlot(bool boolArray[], int maxKidsAtATime) {
 	int j;
 	for (j = 0; j < maxKidsAtATime; j++) {
 		if (boolArray[j] == false) {
-			printf("We have an open slot in %d\n", j);
+			//printf("We have an open slot in %d\n", j);
 			return j;
 		} else {
-			printf("Slot %d is already full\n", j);
+			//printf("Slot %d is already full\n", j);
 		}
 	}
 	return -1;
@@ -76,10 +76,10 @@ int blockedQueueOpenSlot(int blockedQueue[], int maxKidsAtATime) {
 	int j;
 	for (j = 0; j < maxKidsAtATime; j++) {
 		if (blockedQueue[j] == 0) {
-			printf("We have an open slot in %d\n", j);
+			//printf("We have an open slot in %d\n", j);
 			return j;
 		} else {
-			printf("Slot %d is already full\n", j);
+			//printf("Slot %d is already full\n", j);
 		}
 	}
 	return -1;
@@ -174,20 +174,20 @@ int main(int argc, char *argv[]) {
 				stopSeconds += 1;
 				stopNano -= 1000000000;
 			}
-			printf("Let's start the next child at %d:%d\n", stopSeconds, stopNano);
+			//printf("Let's start the next child at %d:%d\n", stopSeconds, stopNano);
 		} 
 		else if ((stopSeconds < clockSeconds) || ((stopSeconds == clockSeconds) && (stopNano < clockNano))) {
 			if (processesLaunched < 10) {
 				//time to launch the process
-				printf("It is time to try to launch a new process\n");
+				//printf("It is time to try to launch a new process\n");
 				prepNewChild = false;
 				
 				//find out which PCT slot is free
 				int openSlot = checkForOpenSlot(boolArray, maxKidsAtATime);
 				if (openSlot == -1) {
-					printf("All slots are full. Ignore this launch attempt\n");
+					//printf("All slots are full. Ignore this launch attempt\n");
 				} else {
-					printf("We can store a new process in slot %d\n", openSlot);
+					//printf("We can store a new process in slot %d\n", openSlot);
 					processesLaunched++;
 					processesRunning++;
 					//now actually store it in said slot
@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
 						perror("execl failed. \n");
 					}
 					else if (pid > 0) { //parent
-						printf("OSS: Generating process with PID %d and putting it in queue %d at time %d:%d\n", pid, 0, clockSeconds, clockNano);
+						printf("OSS: Generating process with PID %d and putting it in slot %d of PCT and queue %d at time %d:%d\n", pid, openSlot, 0, clockSeconds, clockNano);
 						//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
 						
 						//let's populate the control block with our data
@@ -254,9 +254,9 @@ int main(int argc, char *argv[]) {
 			if (receive < 0) {
 				perror("No message received\n");
 			} else {
-				printf("Parent received this message from %d : %s \n", nextPID, message.mesg_text); //later on we'll have to process the response
+				//printf("Parent received this message from %d : %s \n", nextPID, message.mesg_text); //later on we'll have to process the response
 				returnValue = message.mesg_value;
-				printf("Parent is now in control again\n");
+				//printf("Parent is now in control again\n");
 			}
 			//determine what to do with this pid. If it's done, do nothing. Else, send it back in.
 			//int choice = randomNum(2); //note, the random stuff will have to happen in user, not here. But for testing today, let's do it here
@@ -278,9 +278,9 @@ int main(int argc, char *argv[]) {
 				//increment clock by correct amount of time
 				if (whichQueueInUse == 0) {
 					double percentUsed = 0.1 * returnValue; //this should give us the percentage
-					printf("This process has used %f of it's time slice.\n", percentUsed);
+					//printf("This process has used %f of it's time slice.\n", percentUsed);
 					int timeUsed = percentUsed * TIMESLICE0;
-					printf("Therefore, we will increment our clock by %d\n", timeUsed);
+					//printf("Therefore, we will increment our clock by %d\n", timeUsed);
 					incrementClock(timeUsed);
 					
 				}
@@ -335,14 +335,14 @@ int main(int argc, char *argv[]) {
 				//here is where we increment clock by the correct amount
 				if (whichQueueInUse == 0) {
 					double percentUsed = -0.1 * returnValue; //this should give us the positive percentage
-					printf("This process has used %f of it's time slice.\n", percentUsed);
+					//printf("This process has used %f of it's time slice.\n", percentUsed);
 					int timeUsed = percentUsed * TIMESLICE0;
-					printf("Therefore, we will increment our clock by %d\n", timeUsed);
+					//printf("Therefore, we will increment our clock by %d\n", timeUsed);
 					incrementClock(timeUsed);
 				}
 				//THE LINES ABOVE NEED TO BE IMPLEMENTED ONCE OTHER FEATURES ARE IMPLEMENTED	
 			} else if (returnValue == 0) { //we are not done, but we used 100% of our time. Therefore, we were not blocked.
-				printf("Process %d was not finished, but used all of it's name\n", nextPID);
+				//printf("Process %d was not finished, but used all of it's name\n", nextPID);
 				//move it to the back of the queue
 				enqueue(queue, nextPID);//add again to the back of the queue
 				printf("OSS : Putting process with PID %d into queue %d\n", nextPID, 0);
@@ -366,7 +366,7 @@ int main(int argc, char *argv[]) {
 				int blockedPID = blockedQueue[k]; //store our blockedPID here
 				int l;
 				printf("we recall that process %d is blocked in slot %d of our blockedQueue\n", blockedPID, k);
-				for (l = 0; l < sizeof(PCT); l++) {
+				for (l = 0; l < maxKidsAtATime; l++) {
 					if (PCT[l].myPID == blockedPID) { //if this is the blocked process
 						//we have the blocked process. Now we compare it's end time with the current time
 						printf("We have found that this blocked process %d is stored in slot %d of the PCT\n", blockedPID, l);
