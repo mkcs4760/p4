@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
 	srand(time(0)); //placed here so we can generate random numbers later on
 
 	//we need our process control table
-	int maxKidsAtATime = 2; //will be set by the "S" command line argument. Default should probably be 18, but for us we are using 1 for early testing...
+	int maxKidsAtATime = 18; //will be set by the "S" command line argument. Default should probably be 18, but for us we are using 1 for early testing...
 	struct PCB PCT[maxKidsAtATime]; //here we have a table of maxNum blocks
 	int i;
 	for (i = 0; i < maxKidsAtATime; i++) { //default all values to 0 to start
@@ -227,7 +227,7 @@ int main(int argc, char *argv[]) {
 			}
 			if (returnValue > 0) { //we are done
 				//deallocate resources and continue
-				printf("OSS : Process with PID %d has finished at time %d:%d\n", nextPID, clockSeconds, clockNano);
+				
 				int j;
 				for (j = 0; j < sizeof(PCT); j++) {
 					if (PCT[j].myPID == nextPID) {
@@ -244,9 +244,8 @@ int main(int argc, char *argv[]) {
 					int timeUsed = percentUsed * TIMESLICE0; //therefore, we increment out clock by this value
 					incrementClock(timeUsed);
 				}
-				//include values for the other queues
+				printf("OSS : Process with PID %d has finished at time %d:%d\n", nextPID, clockSeconds, clockNano);
 			} else if (returnValue < 0) { //we are not done. We were blocked and that needs to be accounted for here
-				printf("OSS : Process with PID %d was blocked and is being placed in the blocked array at time %d:%d\n", nextPID, clockSeconds, clockNano);
 				//here is where we move it to the blocked list
 				int open = blockedListOpenSlot(blockedList, maxKidsAtATime);
 				if (open < 0) {
@@ -284,15 +283,16 @@ int main(int argc, char *argv[]) {
 					double percentUsed = -0.1 * returnValue; //this should give us the percentage of time used
 					int timeUsed = percentUsed * TIMESLICE0; //therefore, we increment out clock by this value
 					incrementClock(timeUsed);
-				}	
+				}
+				printf("OSS : Process with PID %d was blocked and is being placed in the blocked array at time %d:%d\n", nextPID, clockSeconds, clockNano);				
 			} else if (returnValue == 0) { //we are not done, but we used 100% of our time. Therefore, we were not blocked.
 				//move it to the back of the queue
 				enqueue(queue, nextPID);//add again to the back of the queue
-				printf("OSS : Putting process with PID %d into queue %d\n", nextPID, 0);
-				//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
 				if (whichQueueInUse == 0) {
 					incrementClock(TIMESLICE0); //then just increment the clock
 				}
+				printf("OSS : Putting process with PID %d into queue %d\n", nextPID, 0);
+				//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
 			} else {
 				perror("ERROR! Invalid return value!");
 			}
@@ -328,7 +328,7 @@ int main(int argc, char *argv[]) {
 		for (duh = 0; duh < maxKidsAtATime; duh++) {
 			printf("(%d, %d", duh, PCT[duh].myPID);
 			if (PCT[duh].unblockSecs > 0) {
-				printf(" %d) ", PCT[duh].unblockSecs);
+				printf(" BLOCKED) ");
 			} else {
 				printf(") ");
 			}
