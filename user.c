@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
 		if (receive < 0) {
 			perror("No message received\n");
 		} else {
-			printf("Child %d Received message : %s \n", getpid(), message.mesg_text); 
+			//printf("Child %d Received message : %s \n", getpid(), message.mesg_text); 
 		}
 		
 		int returnTo = message.return_address;
@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
 		if (choice == 0) {
 			//let's assume for now we are done
 			//deallocate resources and continue
-			printf("Process %d is finished.\n", getpid());
+			//printf("Process %d is finished.\n", getpid());
 			//NOW WE NEED TO SEND BACK A VALUE THAT INDICATES WE ARE DONE AND HOW MUCH OF OUR TIMESHARE WE USED
 			strncpy(message.mesg_text, "done", 100);
 			//now let's decide how much of our time we used in order to finish our process
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
 		} else {
 			//let's assume for now we are not done
 			//NOTE, LATER ON WE'LL HAVE TO DISTINGUISH BETWEEN BLOCKED AND NOT BLOCKED!!!!!
-			printf("Process %d is not complete!\n", getpid());
+			//printf("Process %d is not complete!\n", getpid());
 			strncpy(message.mesg_text, "notDone", 100);
 			//message.mesg_value = 1; //0 means done
 			int choice2 = randomNum(2);
@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
 		
 		message.return_address = getpid(); //tell them who sent it
 		// msgsnd to send message 
-		printf("Process %d sends message %d and gives control back to parent process\n", getpid(), message.mesg_value);
+		//printf("Process %d sends message %d and gives control back to parent process\n", getpid(), message.mesg_value);
 		int send = msgsnd(msgid, &message, sizeof(message), 0);
 		if (send == -1) {
 			perror("Error on msgsnd\n");
@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
 	}
 		
 	
-	printf("ending child process %d\n", getpid());
+	//printf("ending child process %d\n", getpid());
 	
 	return 0;
 }

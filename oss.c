@@ -55,7 +55,7 @@ void incrementClock(int inc) {
 		clockSeconds += 1;
 		clockNano -= 1000000000;
 	}
-	printf("The current time is %d:%d\n", clockSeconds, clockNano);
+	//printf("The current time is %d:%d\n", clockSeconds, clockNano);
 }
 
 //checks our boolArray for an open slot to save the process. Returns -1 if none exist
@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
 						perror("execl failed. \n");
 					}
 					else if (pid > 0) { //parent
-						printf("OSS: Generating process with PID %d and putting it in slot %d of PCT and queue %d at time %d:%d\n", pid, openSlot, 0, clockSeconds, clockNano);
+						printf("OSS : Generating process with PID %d and putting it in slot %d of PCT and queue %d at time %d:%d\n", pid, openSlot, 0, clockSeconds, clockNano);
 						//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
 						
 						//let's populate the control block with our data
@@ -262,7 +262,8 @@ int main(int argc, char *argv[]) {
 			//int choice = randomNum(2); //note, the random stuff will have to happen in user, not here. But for testing today, let's do it here
 			if (returnValue > 0) { //we are done
 				//deallocate resources and continue
-				printf("Process %d was finished\n", nextPID);
+				printf("OSS : Process with PID %d has finished at time %d:%d\n", nextPID, clockSeconds, clockNano);
+				//printf("Process %d was finished\n", nextPID);
 				//find out which boolArray position needs to be free
 				int j;
 				for (j = 0; j < sizeof(PCT); j++) {
@@ -270,7 +271,7 @@ int main(int argc, char *argv[]) {
 						boolArray[j] = 0;
 						PCT[j].myPID = 0; //remove PID value from this slot
 						//remove everything else from this block of the table
-						printf("We are deallocating the value at boolArray[%d]\n", j);
+						//printf("We are deallocating the value at boolArray[%d]\n", j);
 						break;
 					}
 				}
@@ -289,32 +290,33 @@ int main(int argc, char *argv[]) {
 				//NOTE: CAN'T REALLY DO THIS UNTIL THE PARENT ACTUALLY SENDS TIME VALUE TO CHILD - SO MAKE THAT THE NEXT STEP!!
 				//THEN GO BACK AND INCREMENT THE CLOCK HERE!!
 			} else if (returnValue < 0) { //we are not done. We were blocked and that needs to be accounted for here
-				printf("Process %d was not finished. It was blocked\n", nextPID);
+				//printf("Process %d was not finished. It was blocked\n", nextPID);
+				printf("OSS : Process with PID %d was blocked and is being placed in the blocked array at time %d:%d\n", nextPID, clockSeconds, clockNano);
 				//here is where we move it to the blocked queue. For now, we just add it back to the same queue
 				int open = blockedQueueOpenSlot(blockedQueue, maxKidsAtATime);
 				if (open < 0) {
 					perror("Error. Cannot block process. Too many processes exist within the system. System failure.\n"); //terminate program here
 				}
-				printf("BLOCKING PROCESS %d\n", nextPID);
+				//printf("BLOCKING PROCESS %d\n", nextPID);
 				blockedQueue[open] = nextPID; //save the pid in this location
 									
 				//enqueue(blockedQueue, nextPID); //here we add the process to the blocked queue
 				//now we need to know how long it should be inside the blocked queue.
 				//for the sake of simplicity, we'll use the same time data for when to start a new process.
-				printf("Let's do some math. Current time is %d:%d\n", clockSeconds, clockNano);
+				//printf("Let's do some math. Current time is %d:%d\n", clockSeconds, clockNano);
 				int blockSeconds = randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_SECS);
 				int blockNano = randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_NS);
-				printf("Process %d will be blocked for %d:%d\n", nextPID, blockSeconds, blockNano);
+				//printf("Process %d will be blocked for %d:%d\n", nextPID, blockSeconds, blockNano);
 				int blockStartSeconds = clockSeconds;
 				int blockStartNano = clockNano;
-				printf("According to this, we say %d = %d + %d\n", blockStartSeconds + blockSeconds, blockStartSeconds, blockSeconds);
+				//printf("According to this, we say %d = %d + %d\n", blockStartSeconds + blockSeconds, blockStartSeconds, blockSeconds);
 				int blockStopSeconds = blockStartSeconds + blockSeconds;
 				int blockStopNano = blockStartNano + blockNano;
 				if (blockStopNano >= 1000000000) {
 					blockStopSeconds += 1;
 					blockStopNano -= 1000000000;
 				}
-				printf("Process %d will be unblocked at %d:%d\n", nextPID, blockStopSeconds, blockStopNano);
+				//printf("Process %d will be unblocked at %d:%d\n", nextPID, blockStopSeconds, blockStopNano);
 				
 				//find out which slot of the PCT we need to save our unblock time
 				//}
@@ -325,8 +327,8 @@ int main(int argc, char *argv[]) {
 						PCT[j].unblockSecs = blockStopSeconds;
 						PCT[j].unblockNano = blockStopNano;
 						//now we know when our process should be unblocked, and we have saved the values to the process control block
-						printf("We just saved the value %d:%d in PCT[%d] under PID %d\n", blockStopSeconds, blockStopNano, j, nextPID);
-						printf("We just saved the value %d:%d in PCT[%d] under PID %d\n", PCT[j].unblockSecs, PCT[j].unblockNano, j, nextPID);
+						//printf("We just saved the value %d:%d in PCT[%d] under PID %d\n", blockStopSeconds, blockStopNano, j, nextPID);
+						//printf("We just saved the value %d:%d in PCT[%d] under PID %d\n", PCT[j].unblockSecs, PCT[j].unblockNano, j, nextPID);
 						break;
 					}
 				}
@@ -358,23 +360,24 @@ int main(int argc, char *argv[]) {
 		}
 		
 		//now we check if there are any blocked processes we need to start up
-		printf("Let's check if there is anything to unblock!!\n");
+		//printf("Let's check if there is anything to unblock!!\n");
 		int k;
 		for (k = 0; k < maxKidsAtATime; k++) {
 			if (blockedQueue[k] > 0) {
 				//this is a blocked process. Check if it should be unblocked or not
 				int blockedPID = blockedQueue[k]; //store our blockedPID here
 				int l;
-				printf("we recall that process %d is blocked in slot %d of our blockedQueue\n", blockedPID, k);
+				//printf("we recall that process %d is blocked in slot %d of our blockedQueue\n", blockedPID, k);
 				for (l = 0; l < maxKidsAtATime; l++) {
 					if (PCT[l].myPID == blockedPID) { //if this is the blocked process
 						//we have the blocked process. Now we compare it's end time with the current time
-						printf("We have found that this blocked process %d is stored in slot %d of the PCT\n", blockedPID, l);
+						//printf("We have found that this blocked process %d is stored in slot %d of the PCT\n", blockedPID, l);
 						if ((PCT[l].unblockSecs < clockSeconds) || ((PCT[l].unblockSecs == clockSeconds) && (PCT[l].unblockNano < clockNano))) {
 							//if the time has passed, then we can unblock our process.
-							printf("We are in PCT[%d]\n", l);
-							printf("Looks like process %d is ready to be unblocked, since it was free at %d:%d and it is now %d:%d\n", blockedPID, PCT[l].unblockSecs, PCT[l].unblockNano, clockSeconds, clockNano);
-							printf("UNBLOCKING PROCESS %d\n", blockedPID);
+							//printf("We are in PCT[%d]\n", l);
+							printf("OSS : Unblocking process with PID %d and placing it in queue %d at time %d:%d\n", blockedPID, 0, clockSeconds, clockNano);
+							//printf("Looks like process %d is ready to be unblocked, since it was free at %d:%d and it is now %d:%d\n", blockedPID, PCT[l].unblockSecs, PCT[l].unblockNano, clockSeconds, clockNano);
+							//printf("UNBLOCKING PROCESS %d\n", blockedPID);
 							//deallocate all your blocked structure parts
 							PCT[l].unblockSecs = 0;
 							PCT[l].unblockNano = 0;
@@ -384,7 +387,7 @@ int main(int argc, char *argv[]) {
 							//I think that's about it
 						}
 						else {
-							printf("We will not unblock process %d, since it will be free at %d:%d and it is now %d:%d\n", blockedPID, PCT[l].unblockSecs, PCT[l].unblockNano, clockSeconds, clockNano);
+							//printf("We will not unblock process %d, since it will be free at %d:%d and it is now %d:%d\n", blockedPID, PCT[l].unblockSecs, PCT[l].unblockNano, clockSeconds, clockNano);
 							
 						}
 					}
@@ -393,7 +396,8 @@ int main(int argc, char *argv[]) {
 		}
 
 		//just for testing
-		printf("!!!Let's check all values within our PCT!\n");
+		//printf("!!!Let's check all values within our PCT!\n");
+		printf("SR\t%d:%d\t", clockSeconds, clockNano);
 		int duh;
 		for (duh = 0; duh < maxKidsAtATime; duh++) {
 			printf("(%d, %d", duh, PCT[duh].myPID);
