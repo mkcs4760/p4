@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
+#include <sys/wait.h>
 #include "messageQueue.h"
 #include "queue.h"
 
@@ -82,10 +84,26 @@ int blockedListOpenSlot(int blockedList[], int maxKidsAtATime) {
 	return -1;
 }
 
+//takes in program name and error string, and runs error message procedure
+void errorMessage(char programName[100], char errorString[100]){
+	char errorFinal[200];
+	sprintf(errorFinal, "%s : Error : %s", programName, errorString);
+	perror(errorFinal);
+	
+	kill(-1*getpid(), SIGKILL);
+}
+
 int main(int argc, char *argv[]) {
 	printf("Welcome to project 4\n");
 	srand(time(0)); //placed here so we can generate random numbers later on
 
+	//this section of code allows us to print the program name in error messages
+	char programName[100];
+	strcpy(programName, argv[0]);
+	if (programName[0] == '.' && programName[1] == '/') {
+		memmove(programName, programName + 2, strlen(programName));
+	}
+	
 	//we need our process control table
 	int maxKidsAtATime = 18; //will be set by the "S" command line argument. Default should probably be 18, but for us we are using 1 for early testing...
 	struct PCB PCT[maxKidsAtATime]; //here we have a table of maxNum blocks
@@ -110,7 +128,10 @@ int main(int argc, char *argv[]) {
 	}
 	
 	//set up our process queue
-	struct Queue* queue = createQueue(maxKidsAtATime); //note: queue is the name of the queue. It is of type Queue, qhich is defined in queue.h. Pass in the max size
+	struct Queue* queue0 = createQueue(maxKidsAtATime); //note: queue is the name of the queue. It is of type Queue, qhich is defined in queue.h. Pass in the max size
+	struct Queue* queue1 = createQueue(maxKidsAtATime);
+	struct Queue* queue2 = createQueue(maxKidsAtATime);
+	struct Queue* queue3 = createQueue(maxKidsAtATime);
 	
 	//set up our blocked queue
 	int blockedList[maxKidsAtATime]; 
@@ -127,7 +148,7 @@ int main(int argc, char *argv[]) {
     // msgget creates a message queue and returns identifier 
     msgid = msgget(key, 0666 | IPC_CREAT);  //create the message queue
 	if (msgid < 0) {
-		printf("Error, msgid equals %d\n", msgid);
+		errorMessage(programName, "Error using msgget for message queue ");
 	}
 	//we are now ready to send messages whenever we desire
 	
@@ -138,9 +159,17 @@ int main(int argc, char *argv[]) {
 	int processesLaunched = 0;
 	int processesRunning = 0;
 	int done = 0;
+	/*int stall = 0;
+	int PL = 0;*/
 	
 	while (!done) {
+		int temp = waitpid(-1, NULL, WNOHANG); //required to properly end processes and avoid a fork bomb
+		if (temp < 0 && processesRunning > 0) {
+			errorMessage(programName, "Unexpected result from terminating process ");
+		}
+		
 		//first we check if we should prep a new child, and if so we do
+		//printf("Is there a child preped? %d\n", prepNewChild);
 		if (prepNewChild == false) {
 			prepNewChild = true;
 			durationSeconds = randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_SECS);
@@ -155,18 +184,17 @@ int main(int argc, char *argv[]) {
 				stopNano -= 1000000000;
 			}
 			//we will try to launch our next child at stopSeconds:stopNano
+			//printf("We have set a time to launch a new child\n");
 		} 
 		else if ((stopSeconds < clockSeconds) || ((stopSeconds == clockSeconds) && (stopNano < clockNano))) {
-			if (processesLaunched < 10) { //for now, we have a placeholder of 10 processes in total per run of the code. THIS NEEDS TO CHANGE FOR FINAL SUBMISSION!!
+			if (processesLaunched < 100) { //for now, we have a placeholder of 10 processes in total per run of the code. THIS NEEDS TO CHANGE FOR FINAL SUBMISSION!!
 				//time to launch the process
-				prepNewChild = false;
 				
 				//find out which PCT slot is free
 				int openSlot = checkForOpenSlot(boolArray, maxKidsAtATime);
 				if (openSlot != -1) { //a return value of -1 means all slots are currently filled, and per instructions we are to ignore this process
-					processesLaunched++;
-					processesRunning++;
-					boolArray[openSlot] = true; //first claim that spot
+
+
 					//then set all values to that PCB - this still needs to be done
 					//also actually launch the child
 					pid_t pid;
@@ -174,64 +202,102 @@ int main(int argc, char *argv[]) {
 					
 					if (pid == 0) { //child
 						execl ("user", "user", NULL);
-						perror("execl failed. \n");
+						errorMessage(programName, "execl function failed ");
 					}
 					else if (pid > 0) { //parent
-						printf("OSS : Generating process with PID %d and putting it in slot %d of PCT and queue %d at time %d:%d\n", pid, openSlot, 0, clockSeconds, clockNano);
-						//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
+						boolArray[openSlot] = true; //first claim that spot
+						//printf("boolArray[%d] was just set to true\n", openSlot);
+						processesLaunched++;
+						processesRunning++;
+						//printf("Increased the number of processes running...\n");
+						prepNewChild = false;
 						
 						//let's populate the control block with our data
 						PCT[openSlot].myPID = pid;
-						PCT[openSlot].processPriority = 0; //for now, we'll just use one highest priority queue.....
 						//note you may not need the next two lines... just experimenting
 						PCT[openSlot].timeCreatedSecs = clockSeconds;
 						PCT[openSlot].timeCreatedNano = clockNano;
 						PCT[openSlot].totalCpuTimeUsed = 0;
 						PCT[openSlot].totalTimeInSystem = 0;
 						PCT[openSlot].timeUsedLastBurst = 0;
-						enqueue(queue, pid); //add this process to the queue
+						if (randomNum(5) == 1) { //let's randomly determine if this child should be high priority or not
+							printf("OSS : Generating process with PID %d and putting it in slot %d of PCT and queue #0 at time %d:%d\n", pid, openSlot, clockSeconds, clockNano);
+							PCT[openSlot].processPriority = 0;
+							enqueue(queue0, pid);
+						} else {
+							printf("OSS : Generating process with PID %d and putting it in slot %d of PCT and queue #1 at time %d:%d\n", pid, openSlot, clockSeconds, clockNano);
+							PCT[openSlot].processPriority = 1;
+							enqueue(queue1, pid);
+						}
 						continue;
 					}
 					else {
-						//Error
+						errorMessage(programName, "Unexpected return value from fork ");
+						kill(-1*getpid(), SIGKILL); //kills process and all children
 					}
 				}
 			}
 		}
 		incrementClock(clockInc); //increment clock
 		//check to see if we should start a process
-		if (!isEmpty(queue)) { //will need to figure out how to set this up for all queues
-			int whichQueueInUse = 0; //this value will vary 0-3 depending upon which queue we are launching a process from
-			//queue is not empty. Thus we should run something
-			int nextPID = dequeue(queue); //decide the next process to run. Here it's simple with only one queue. Later this will require more attention
-			
+		int whichQueueInUse;
+		if (!isEmpty(queue0)) {
+			whichQueueInUse = 0;
+		} else if (!isEmpty(queue1)) {
+			whichQueueInUse = 1;
+		} else if (!isEmpty(queue2)) {
+			whichQueueInUse = 2;
+		} else if (!isEmpty(queue3)) {
+			whichQueueInUse = 3;
+		} else {
+		    whichQueueInUse = -1;
+		}
+		
+		if (whichQueueInUse != -1) {
+			int nextPID;
+			switch(whichQueueInUse) {
+				case 0 :
+					nextPID = dequeue(queue0);
+					printf("OSS : Dispatching process with PID %d from queue #0 at time %d:%d\n", nextPID, clockSeconds, clockNano);
+					break;
+				case 1 :
+					nextPID = dequeue(queue1);
+					printf("OSS : Dispatching process with PID %d from queue #1 at time %d:%d\n", nextPID, clockSeconds, clockNano);
+					break;
+				case 2 :
+					nextPID = dequeue(queue2);
+					printf("OSS : Dispatching process with PID %d from queue #2 at time %d:%d\n", nextPID, clockSeconds, clockNano);
+					break;
+				case 3 :
+					nextPID = dequeue(queue3);
+					printf("OSS : Dispatching process with PID %d from queue #3 at time %d:%d\n", nextPID, clockSeconds, clockNano);
+			}
+				
 			message.mesg_type = nextPID; //send a message to this specific child, and no other
 			strncpy(message.mesg_text, "go", 100); //right now we're just sending "go" later on we'll have to be more specific
 			message.return_address = getpid(); //tell them who sent it
-			
-			printf("OSS : Dispatching process with PID %d from queue %d at time %d:%d\n", nextPID, 0, clockSeconds, clockNano);
-			//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
-			
+				
 			int send = msgsnd(msgid, &message, sizeof(message), 0);
 			if (send == -1) {
-				perror("Error on msgsnd\n");
+				errorMessage(programName, "Error sending message via msgsnd command ");
 			}
 			//now we wait to receive a response
 			int receive;
 			int returnValue;
 			receive = msgrcv(msgid, &message, sizeof(message), getpid(), 0); //wait for message back. OSS does nothing until then
 			if (receive < 0) {
-				perror("No message received\n");
+				errorMessage(programName, "Error receiving message via msgrcv command ");
 			} else {
 				returnValue = message.mesg_value; //we got a value back, and oss is in control again
 			}
+			
 			if (returnValue > 0) { //we are done
 				//deallocate resources and continue
 				
 				int j;
 				for (j = 0; j < sizeof(PCT); j++) {
 					if (PCT[j].myPID == nextPID) {
-						boolArray[j] = 0;
+						boolArray[j] = false;
 						PCT[j].myPID = 0; //remove PID value from this slot
 						//remove everything else from this block of the table
 						break;
@@ -239,21 +305,33 @@ int main(int argc, char *argv[]) {
 				}
 				processesRunning--;
 				//increment clock by correct amount of time
-				if (whichQueueInUse == 0) {
-					double percentUsed = 0.1 * returnValue; //this should give us the percentage of time used
-					int timeUsed = percentUsed * TIMESLICE0; //therefore, we increment out clock by this value
-					incrementClock(timeUsed);
+				double percentUsed = 0.1 * returnValue; //this should give us the percentage of time used
+				int timeUsed; //therefore, we increment our clock by this value
+				switch(whichQueueInUse) {
+				case 0 :
+					timeUsed = percentUsed * TIMESLICE0;
+					break;
+				case 1 :
+					timeUsed = percentUsed * TIMESLICE1;
+					break;
+				case 2 :
+					timeUsed = percentUsed * TIMESLICE2;
+					break;
+				case 3 :
+					timeUsed = percentUsed * TIMESLICE3;
 				}
+				incrementClock(timeUsed);
 				printf("OSS : Process with PID %d has finished at time %d:%d\n", nextPID, clockSeconds, clockNano);
 			} else if (returnValue < 0) { //we are not done. We were blocked and that needs to be accounted for here
 				//here is where we move it to the blocked list
 				int open = blockedListOpenSlot(blockedList, maxKidsAtATime);
 				if (open < 0) {
-					perror("Error. Cannot block process. Too many processes exist within the system. System failure.\n"); //terminate program here
+					perror("Error. Cannot block process. Too many processes exist within the system. System failure.\n");
+					errorMessage(programName, "Error. Cannot block process. Too many processes exist within the system "); //should never get this, but just in case
 				}
 				blockedList[open] = nextPID; //save the pid in this location
 									
-				//now we need to know how long it should be inside the blocked queue.
+				//now we need to know how long it should be inside the blocked list.
 				//for the sake of simplicity, we'll use the same time data for when to start a new process.
 				int blockSeconds = randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_SECS);
 				int blockNano = randomNum(MAX_TIME_BETWEEN_NEW_PROCESSES_NS);
@@ -279,22 +357,47 @@ int main(int argc, char *argv[]) {
 				}
 				
 				//here is where we increment clock by the correct amount
-				if (whichQueueInUse == 0) {
-					double percentUsed = -0.1 * returnValue; //this should give us the percentage of time used
-					int timeUsed = percentUsed * TIMESLICE0; //therefore, we increment out clock by this value
-					incrementClock(timeUsed);
+				double percentUsed = -0.1 * returnValue; //this should give us the percentage of time used
+				int timeUsed; //therefore, we increment our clock by this value
+				switch(whichQueueInUse) {
+				case 0 :
+					timeUsed = percentUsed * TIMESLICE0;
+					break;
+				case 1 :
+					timeUsed = percentUsed * TIMESLICE1;
+					break;
+				case 2 :
+					timeUsed = percentUsed * TIMESLICE2;
+					break;
+				case 3 :
+					timeUsed = percentUsed * TIMESLICE3;
 				}
+				incrementClock(timeUsed);
 				printf("OSS : Process with PID %d was blocked and is being placed in the blocked array at time %d:%d\n", nextPID, clockSeconds, clockNano);				
 			} else if (returnValue == 0) { //we are not done, but we used 100% of our time. Therefore, we were not blocked.
 				//move it to the back of the queue
-				enqueue(queue, nextPID);//add again to the back of the queue
-				if (whichQueueInUse == 0) {
-					incrementClock(TIMESLICE0); //then just increment the clock
+				
+				switch(whichQueueInUse) {
+				case 0 : //case 0 stays at highest priority
+					enqueue(queue0, nextPID);
+					incrementClock(TIMESLICE0);
+					printf("OSS : Putting process with PID %d into queue #0\n", nextPID);
+					break;
+				case 1 : //all others take a step down
+					enqueue(queue2, nextPID);
+					incrementClock(TIMESLICE1);
+					printf("OSS : Putting process with PID %d into queue #1\n", nextPID);
+					break;
+				case 2 :
+					enqueue(queue3, nextPID);
+					incrementClock(TIMESLICE2); //note that the queue and timeslice numbers do not match. This is not a mistakef
+					printf("OSS : Putting process with PID %d into queue #2\n", nextPID);
+					break;
+				case 3 :
+					enqueue(queue3, nextPID);
+					incrementClock(TIMESLICE3);
+					printf("OSS : Putting process with PID %d into queue #3\n", nextPID);
 				}
-				printf("OSS : Putting process with PID %d into queue %d\n", nextPID, 0);
-				//the above is the official log statement to print to file. Note, "0" must be replaced with queue number, and "OSS" should come form a variable and not be hardcoded into program
-			} else {
-				perror("ERROR! Invalid return value!");
 			}
 		}
 		
@@ -309,13 +412,19 @@ int main(int argc, char *argv[]) {
 					if (PCT[l].myPID == blockedPID) { //if this is the blocked process, is it time to unblock it?
 						if ((PCT[l].unblockSecs < clockSeconds) || ((PCT[l].unblockSecs == clockSeconds) && (PCT[l].unblockNano < clockNano))) {
 							//if the time has passed, then we can unblock our process.
-							printf("OSS : Unblocking process with PID %d and placing it in queue %d at time %d:%d\n", blockedPID, 0, clockSeconds, clockNano);
+							if (PCT[l].processPriority == 0) {
+								//this process is of the highest priority
+								printf("OSS : Unblocking process with PID %d and placing it in queue #0 at time %d:%d\n", blockedPID, clockSeconds, clockNano);
+								enqueue(queue0, blockedPID);
+							} else {
+								//this process is of a lower priority
+								printf("OSS : Unblocking process with PID %d and placing it in queue #1 at time %d:%d\n", blockedPID, clockSeconds, clockNano);
+								enqueue(queue1, blockedPID);
+							}
 							//deallocate all your blocked structure parts
 							PCT[l].unblockSecs = 0;
 							PCT[l].unblockNano = 0;
 							blockedList[k] = 0;
-							//add the process back to the running queue
-							enqueue(queue, blockedPID);
 						}
 					}
 				}
@@ -323,7 +432,7 @@ int main(int argc, char *argv[]) {
 		}
 
 		//just for testing
-		printf("SR\t%d:%d\t", clockSeconds, clockNano);
+		/*printf("SR\t%d:%d\t", clockSeconds, clockNano);
 		int duh;
 		for (duh = 0; duh < maxKidsAtATime; duh++) {
 			printf("(%d, %d", duh, PCT[duh].myPID);
@@ -335,11 +444,23 @@ int main(int argc, char *argv[]) {
 		}
 		printf("\n");
 		
+		//this is for teting as well
+		printf("SR BA: ");
+		int ba;
+		for (ba = 0; ba < maxKidsAtATime; ba++) {
+			printf(" %d ", boolArray[ba]);
+		}
+		printf("\n");*/
+		
+		printf("PL = %d\n", processesLaunched);
+		
+		
 		//now we check to see if we are done
-		if (processesLaunched > 9 && processesRunning == 0) { //terminates when we've launched and completed 10 processes.
+		if (processesLaunched > 99 && processesRunning == 0) { //terminates when we've launched and completed 10 processes.
 			done = 1;
 			printf("We are done with our loop\n");
 		}
+		
 	}
 	printf("We leave at %d:%d\n", clockSeconds, clockNano);
 	

@@ -26,11 +26,26 @@ int randomTimeUsed() {
     return num;	
 }
 
+//takes in program name and error string, and runs error message procedure
+void errorMessage(char programName[100], char errorString[100]){
+	char errorFinal[200];
+	sprintf(errorFinal, "%s : Error : %s", programName, errorString);
+	perror(errorFinal);
+	exit(1);
+}
+
 int main(int argc, char *argv[]) {
 	srand(time(0)); //placed here so we can generate random numbers later on
 	
-	//first we set up the message queue
+	//this section of code allows us to print the program name in error messages
+	char programName[100];
+	strcpy(programName, argv[0]);
+	if (programName[0] == '.' && programName[1] == '/') {
+		memmove(programName, programName + 2, strlen(programName));
+	}
 	
+	//first we set up the message queue
+
 	key_t key; 
     int msgid; 
   
@@ -38,6 +53,9 @@ int main(int argc, char *argv[]) {
   
     //msgget creates a message queue  and returns identifier
     msgid = msgget(key, 0666 | IPC_CREAT); 
+	if (msgid < 0) {
+		errorMessage(programName, "Error using msgget for message queue ");
+	}
 	
 	int terminate = 0;
 	
@@ -46,7 +64,7 @@ int main(int argc, char *argv[]) {
 		int receive;
 		receive = msgrcv(msgid, &message, sizeof(message), getpid(), 0); 
 		if (receive < 0) {
-			perror("No message received\n");
+			errorMessage(programName, "Error receiving message via msgrcv command ");
 		}
 		
 		int returnTo = message.return_address;
@@ -74,9 +92,9 @@ int main(int argc, char *argv[]) {
 		message.return_address = getpid(); //tell them who sent it
 		int send = msgsnd(msgid, &message, sizeof(message), 0); //send message back to parent
 		if (send == -1) {
-			perror("Error on msgsnd\n");
+			errorMessage(programName, "Error sending message via msgsnd command ");
 		}
 	}
-
+	
 	return 0;
 }
