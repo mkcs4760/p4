@@ -9,6 +9,8 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <errno.h>
+#include <sys/time.h>
 #include "messageQueue.h"
 #include "queue.h"
 
@@ -84,6 +86,33 @@ int blockedListOpenSlot(int blockedList[], int maxKidsAtATime) {
 	return -1;
 }
 
+//handles the 3 second timer force stop - based on textbook code as instructed by professor
+static void myhandler(int s) {
+    char message[41] = "Program reached 3 second limit. Program ";
+    int errsave;
+    errsave = errno;
+    write(STDERR_FILENO, &message, 40);
+    errno = errsave;
+   
+    kill(-1*getpid(), SIGKILL); //kills process and all children
+}
+//function taken from textbook as instructed by professor
+static int setupinterrupt(void) { //set up myhandler for  SIGPROF
+    struct sigaction act;
+    act.sa_handler = myhandler;
+    act.sa_flags = 0;
+    return (sigemptyset(&act.sa_mask) || sigaction(SIGPROF, &act, NULL));
+}
+//function taken from textbook as instructed by professor
+static int setupitimer(void) { // set ITIMER_PROF for 3-second intervals
+    struct itimerval value;
+    value.it_interval.tv_sec = 3;
+    value.it_interval.tv_usec = 0;
+    value.it_value = value.it_interval;
+    return (setitimer(ITIMER_PROF, &value, NULL));
+}
+
+
 //takes in program name and error string, and runs error message procedure
 void errorMessage(char programName[100], char errorString[100]){
 	char errorFinal[200];
@@ -103,6 +132,16 @@ int main(int argc, char *argv[]) {
 	if (programName[0] == '.' && programName[1] == '/') {
 		memmove(programName, programName + 2, strlen(programName));
 	}
+	
+	//set up 3 second timer
+    if (setupinterrupt()) {
+		errno = 125;
+		errorMessage(programName, "Failed to set up 3 second timer. ");
+    }
+    if (setupitimer() == -1) {
+		errno = 125;
+		errorMessage(programName, "Failed to set up 3 second timer. ");
+    }
 	
 	//we need our process control table
 	int maxKidsAtATime = 18; //will be set by the "S" command line argument. Default should probably be 18, but for us we are using 1 for early testing...
@@ -221,11 +260,11 @@ int main(int argc, char *argv[]) {
 						PCT[openSlot].totalTimeInSystem = 0;
 						PCT[openSlot].timeUsedLastBurst = 0;
 						if (randomNum(5) == 1) { //let's randomly determine if this child should be high priority or not
-							printf("OSS : Generating process with PID %d and putting it in slot %d of PCT and queue #0 at time %d:%d\n", pid, openSlot, clockSeconds, clockNano);
+							printf("OSS : Generating process with PID %d and putting it in queue #0 at time %d:%d\n", pid, clockSeconds, clockNano);
 							PCT[openSlot].processPriority = 0;
 							enqueue(queue0, pid);
 						} else {
-							printf("OSS : Generating process with PID %d and putting it in slot %d of PCT and queue #1 at time %d:%d\n", pid, openSlot, clockSeconds, clockNano);
+							printf("OSS : Generating process with PID %d and putting it in queue #1 at time %d:%d\n", pid, clockSeconds, clockNano);
 							PCT[openSlot].processPriority = 1;
 							enqueue(queue1, pid);
 						}
@@ -430,30 +469,6 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
-
-		//just for testing
-		/*printf("SR\t%d:%d\t", clockSeconds, clockNano);
-		int duh;
-		for (duh = 0; duh < maxKidsAtATime; duh++) {
-			printf("(%d, %d", duh, PCT[duh].myPID);
-			if (PCT[duh].unblockSecs > 0) {
-				printf(" BLOCKED) ");
-			} else {
-				printf(") ");
-			}
-		}
-		printf("\n");
-		
-		//this is for teting as well
-		printf("SR BA: ");
-		int ba;
-		for (ba = 0; ba < maxKidsAtATime; ba++) {
-			printf(" %d ", boolArray[ba]);
-		}
-		printf("\n");*/
-		
-		printf("PL = %d\n", processesLaunched);
-		
 		
 		//now we check to see if we are done
 		if (processesLaunched > 99 && processesRunning == 0) { //terminates when we've launched and completed 10 processes.
