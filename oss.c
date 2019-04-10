@@ -23,6 +23,7 @@
 #define TIMESLICE2 2*TIMESLICE1
 #define TIMESLICE3 2*TIMESLICE2
 	
+int msgid; 
 
 struct PCB {
 	int myPID; //your local simulated pid
@@ -61,6 +62,17 @@ void incrementClock(int inc) {
 	//printf("The current time is %d:%d\n", clockSeconds, clockNano);
 }
 
+//called whenever we terminate program. Unlinks semaphores, kills child processes, destroys shared memory,
+//and, if resulting from an error, destroys master process
+void endAll(int error) {
+	//close message queue
+	msgctl(msgid, IPC_RMID, NULL);
+	
+	//destroy processes
+	if (error)
+		kill(-1*getpid(), SIGKILL); //kills process and all children
+}
+
 //checks our boolArray for an open slot to save the process. Returns -1 if none exist
 int checkForOpenSlot(bool boolArray[], int maxKidsAtATime) {
 	int j;
@@ -94,7 +106,7 @@ static void myhandler(int s) {
     write(STDERR_FILENO, &message, 40);
     errno = errsave;
    
-    kill(-1*getpid(), SIGKILL); //kills process and all children
+    endAll(1);
 }
 //function taken from textbook as instructed by professor
 static int setupinterrupt(void) { //set up myhandler for  SIGPROF
@@ -119,13 +131,20 @@ void errorMessage(char programName[100], char errorString[100]){
 	sprintf(errorFinal, "%s : Error : %s", programName, errorString);
 	perror(errorFinal);
 	
-	kill(-1*getpid(), SIGKILL);
+	endAll(1);
+}
+
+//called when interupt signal (^C) is called
+void intHandler(int dummy) {
+	printf(" Interupt signal received.\n");
+	endAll(1);
 }
 
 int main(int argc, char *argv[]) {
 	printf("Welcome to project 4\n");
 	srand(time(0)); //placed here so we can generate random numbers later on
-
+	signal(SIGINT, intHandler); //signal processing
+	
 	//this section of code allows us to print the program name in error messages
 	char programName[100];
 	strcpy(programName, argv[0]);
@@ -180,7 +199,7 @@ int main(int argc, char *argv[]) {
 
 	//set up our messageQueue
 	key_t key; 
-    int msgid; 
+    
   
     key = 1094;
   
@@ -477,11 +496,9 @@ int main(int argc, char *argv[]) {
 		}
 		
 	}
-	printf("We leave at %d:%d\n", clockSeconds, clockNano);
-	
-	//close message queue
-	msgctl(msgid, IPC_RMID, NULL); 
+	printf("We leave at %d:%d\n", clockSeconds, clockNano); 
 	printf("That concludes this portion of the in-development program\n");
 	printf("End of program\n");
+	endAll(0);
 	return 0;
 }
