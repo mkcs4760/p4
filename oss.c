@@ -59,11 +59,9 @@ void incrementClock(int inc) {
 		clockSeconds += 1;
 		clockNano -= 1000000000;
 	}
-	//printf("The current time is %d:%d\n", clockSeconds, clockNano);
 }
 
-//called whenever we terminate program. Unlinks semaphores, kills child processes, destroys shared memory,
-//and, if resulting from an error, destroys master process
+//called whenever we terminate program. Closes message queue, kills child processes, and, if resulting from an error, destroys master process
 void endAll(int error) {
 	//close message queue
 	msgctl(msgid, IPC_RMID, NULL);
@@ -78,21 +76,18 @@ int checkForOpenSlot(bool boolArray[], int maxKidsAtATime) {
 	int j;
 	for (j = 0; j < maxKidsAtATime; j++) {
 		if (boolArray[j] == false) {
-			//printf("We have an open slot in %d\n", j);
 			return j;
-		} else {
-			//printf("Slot %d is already full\n", j);
 		}
 	}
 	return -1;
 }
 
+//checks our blockedList for an open slot to save the process. Returns -1 if none exist
 int blockedListOpenSlot(int blockedList[], int maxKidsAtATime) {
 	int j;
 	for (j = 0; j < maxKidsAtATime; j++) {
 		if (blockedList[j] == 0) {
 			return j;
-		} else {
 		}
 	}
 	return -1;
@@ -105,7 +100,6 @@ static void myhandler(int s) {
     errsave = errno;
     write(STDERR_FILENO, &message, 40);
     errno = errsave;
-   
     endAll(1);
 }
 //function taken from textbook as instructed by professor
@@ -124,13 +118,11 @@ static int setupitimer(void) { // set ITIMER_PROF for 3-second intervals
     return (setitimer(ITIMER_PROF, &value, NULL));
 }
 
-
 //takes in program name and error string, and runs error message procedure
 void errorMessage(char programName[100], char errorString[100]){
 	char errorFinal[200];
 	sprintf(errorFinal, "%s : Error : %s", programName, errorString);
 	perror(errorFinal);
-	
 	endAll(1);
 }
 
@@ -162,8 +154,34 @@ int main(int argc, char *argv[]) {
 		errorMessage(programName, "Failed to set up 3 second timer. ");
     }
 	
+	int maxKidsAtATime = 18; //can be overloaded by command line argument
+	
+	//let's process the getopt arguments
+	int option;
+	while ((option = getopt(argc, argv, "hs:")) != -1) {
+		switch (option) {
+			case 'h' :	printf("Help page for OS_Klein_project4\n"); //for h, we print helpful information about arguments to the screen
+						printf("Consists of the following:\n\tTwo .c files titled oss.c and user.c\n\tTwo .h files titled messageQueue.h and queue.h\n\tOne Makefile\n\tOne README file\n\tOne version control log.\n");
+						printf("The command 'make' will run the makefile and compile the program\n");
+						printf("Command line arguments for master executable:\n");
+						printf("\t-s\t<maxChildrenAtATime>\tdefaults to 18\n");
+						printf("\t-h\t<NoArgument>\n");
+						printf("Version control acomplished using github. Log obtained using command 'git log > versionLog.txt'\n");
+						exit(0);
+						break;
+			case 's' :	if (atoi(optarg) <= 19) { //for s, we set the maximum of child processes we will have at a time
+							maxKidsAtATime = atoi(optarg);
+						} else {
+							errno = 22;
+							errorMessage(programName, "Cannot allow more then 19 process at a time. "); //the parent is running, so there's already 1 process running
+						}
+						break;			
+			default :	errno = 22; //anything else is an invalid argument
+						errorMessage(programName, "You entered an invalid argument. ");
+		}
+	}
+	
 	//we need our process control table
-	int maxKidsAtATime = 18; //will be set by the "S" command line argument. Default should probably be 18, but for us we are using 1 for early testing...
 	struct PCB PCT[maxKidsAtATime]; //here we have a table of maxNum blocks
 	int i;
 	for (i = 0; i < maxKidsAtATime; i++) { //default all values to 0 to start
