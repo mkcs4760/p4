@@ -29,6 +29,8 @@ struct PCB {
 	int myPID; //your local simulated pid
 	int timeCreatedSecs;
 	int timeCreatedNano;
+	int pauseSecs;
+	int pauseNano;
 	int processPriority; //0-3, start with only highest of 0, however
 	int unblockSecs; //not sure what this default to, so be careful!!!
 	int unblockNano;
@@ -175,14 +177,16 @@ int main(int argc, char *argv[]) {
 	//we need our process control table
 	struct PCB PCT[maxKidsAtATime]; //here we have a table of maxNum blocks
 	int i;
-	for (i = 0; i < maxKidsAtATime; i++) { //default all values to 0 to start
+	/*for (i = 0; i < maxKidsAtATime; i++) { //default all values to 0 to start
 		PCT[i].myPID = 0; 
 		PCT[i].timeCreatedSecs = 0;
 		PCT[i].timeCreatedNano = 0;
+		PCT[i].pauseSecs = 0;
+		PCT[i].pauseNano = 0;
 		PCT[i].processPriority = 0;
 		PCT[i].unblockSecs = 0; 
 		PCT[i].unblockNano = 0;	
-	}
+	}*/
 	
 	//our "bit vector" (or boolean array here) that will tell us which PRB are free
 	bool boolArray[maxKidsAtATime]; //by default, these are all set to false. This has been tested and verified
@@ -219,6 +223,9 @@ int main(int argc, char *argv[]) {
 	//sample of the OSS loop
 	int startSeconds, startNano, stopSeconds, stopNano, durationSeconds, durationNano;
 	bool prepNewChild = false;
+	
+	double totalTurnaround, totalWait, totalSleep, totalIdle;
+	int totalTurnaroundSecs, totalTurnaroundNano;
 	
 	int processesLaunched = 0;
 	int processesRunning = 0;
@@ -278,6 +285,9 @@ int main(int argc, char *argv[]) {
 						//note you may not need the next two lines... just experimenting
 						PCT[openSlot].timeCreatedSecs = clockSeconds;
 						PCT[openSlot].timeCreatedNano = clockNano;
+						PCT[openSlot].pauseSecs = clockSeconds;
+						PCT[openSlot].pauseNano = clockNano;
+						printf("Setting pause time for PCT[%d] to %d:%d, or %d:%d\n", openSlot, PCT[openSlot].pauseSecs, PCT[openSlot].pauseNano, clockSeconds, clockNano);
 						if (randomNum(5) == 1) { //let's randomly determine if this child should be high priority or not
 							printf("OSS : Generating process with PID %d and putting it in queue #0 at time %d:%d\n", pid, clockSeconds, clockNano);
 							PCT[openSlot].processPriority = 0;
@@ -291,7 +301,6 @@ int main(int argc, char *argv[]) {
 					}
 					else {
 						errorMessage(programName, "Unexpected return value from fork ");
-						kill(-1*getpid(), SIGKILL); //kills process and all children
 					}
 				}
 			}
@@ -330,6 +339,22 @@ int main(int argc, char *argv[]) {
 					nextPID = dequeue(queue3);
 					printf("OSS : Dispatching process with PID %d from queue #3 at time %d:%d\n", nextPID, clockSeconds, clockNano);
 			}
+			
+			//we have a pid, let's wake it up
+			int k;
+			for (k = 0; k < sizeof(PCT); k++) {
+				if (PCT[k].myPID == nextPID) {
+					double pauseDouble = PCT[k].pauseSecs + ((double)PCT[k].pauseNano / 1000000000); //this format appears to work
+					printf("Receiving pause time from %d is %d:%d, or %.10f\n", nextPID, PCT[k].pauseSecs, PCT[k].pauseNano, pauseDouble);
+					double unpauseDouble = clockSeconds + ((double)clockNano / 1000000000);
+					double waitTime = unpauseDouble - pauseDouble;
+					printf("Process %d paused at %.10f and unpaused at %.10f\n", nextPID, pauseDouble, unpauseDouble);
+					//printf("Adding %.10f to totalWait\n", waitTime);
+					totalWait += waitTime; //not done with this, but getting somewhere
+					//remove everything else from this block of the table
+					break;
+				}
+			}
 				
 			message.mesg_type = nextPID; //send a message to this specific child, and no other
 			strncpy(message.mesg_text, "go", 100); //right now we're just sending "go" later on we'll have to be more specific
@@ -357,6 +382,29 @@ int main(int argc, char *argv[]) {
 					if (PCT[j].myPID == nextPID) {
 						boolArray[j] = false;
 						PCT[j].myPID = 0; //remove PID value from this slot
+						double startDouble = PCT[j].timeCreatedSecs + ((double)PCT[j].timeCreatedNano / 1000000000); //this format appears to work
+						double endDouble = clockSeconds + ((double)clockNano / 1000000000);
+						double turnAround = endDouble - startDouble;
+						printf("Adding %.10f to totalTurnaround\n", turnAround);
+						totalTurnaround += turnAround; //not done with this, but getting somewhere
+						
+						int turnAroundSecs, turnAroundNano;
+						if (clockNano > PCT[j].timeCreatedNano) {
+							turnAroundNano = clockNano - PCT[j].timeCreatedNano;
+							turnAroundSecs = clockSeconds - PCT[j].timeCreatedSecs;
+						} else {
+							turnAroundNano = clockNano + 1000000000 - PCT[j].timeCreatedNano;
+							turnAroundSecs = clockSeconds - 1 - PCT[j].timeCreatedSecs;
+						}
+						totalTurnaroundSecs += turnAroundSecs;
+						totalTurnaroundNano += turnAroundNano;
+						if (totalTurnaroundNano >= 1000000000) { //increment the next unit
+							totalTurnaroundSecs += 1;
+							totalTurnaroundNano -= 1000000000;
+						}
+						
+						
+						
 						//remove everything else from this block of the table
 						break;
 					}
@@ -381,6 +429,16 @@ int main(int argc, char *argv[]) {
 				incrementClock(timeUsed);
 				printf("OSS : Process with PID %d has finished at time %d:%d\n", nextPID, clockSeconds, clockNano);
 			} else if (returnValue < 0) { //we are not done. We were blocked and that needs to be accounted for here
+				int k;
+				for (k = 0; k < sizeof(PCT); k++) {
+					if (PCT[k].myPID == nextPID) { //reset the pause values to calculate wait time
+						PCT[k].pauseSecs = clockSeconds;
+						PCT[k].pauseSecs = clockNano;
+						printf("2Setting pause time for %d to %d:%d, or %d:%d\n", nextPID, PCT[k].pauseSecs, PCT[k].pauseNano, clockSeconds, clockNano);
+						break;
+					}
+				}				
+				
 				//here is where we move it to the blocked list
 				int open = blockedListOpenSlot(blockedList, maxKidsAtATime);
 				if (open < 0) {
@@ -433,6 +491,16 @@ int main(int argc, char *argv[]) {
 				incrementClock(timeUsed);
 				printf("OSS : Process with PID %d was blocked and is being placed in the blocked array at time %d:%d\n", nextPID, clockSeconds, clockNano);				
 			} else if (returnValue == 0) { //we are not done, but we used 100% of our time. Therefore, we were not blocked.
+				int k;
+				for (k = 0; k < sizeof(PCT); k++) {
+					if (PCT[k].myPID == nextPID) { //reset the pause values to calculate wait time
+						PCT[k].pauseSecs = clockSeconds;
+						PCT[k].pauseSecs = clockNano;
+						printf("1Setting pause time for %d to %d:%d, or %d:%d\n", nextPID, PCT[k].pauseSecs, PCT[k].pauseNano, clockSeconds, clockNano);
+						break;
+					}
+				}	
+				
 				//move it to the back of the queue
 				switch(whichQueueInUse) {
 				case 0 : //case 0 stays at highest priority
@@ -495,6 +563,33 @@ int main(int argc, char *argv[]) {
 		}
 		
 	}
+	
+	printf("Total Turnaround: %.10f\n", totalTurnaround);
+	double averageTurnaround = (double)totalTurnaround / processesLaunched;
+	printf("Average Turnaround: %.10f\n", averageTurnaround);
+	
+	printf("Total Turnaround: %d:%d\n", totalTurnaroundSecs, totalTurnaroundNano);
+	int avgTurnaroundSecs = totalTurnaroundSecs / processesLaunched;
+	
+	//int avgTurnaroundNano1 = ((double)totalTurnaroundNano / processesLaunched) * 1000000000; //this is only part of it...
+	int avgTurnaroundNano1 = ((double)totalTurnaroundNano / processesLaunched);
+	int avgTurnaroundNano2 = (((double)totalTurnaroundSecs / processesLaunched) - avgTurnaroundSecs) * 1000000000;
+	 
+	
+	
+	//int avgTurnaroundNano1 = ((double)totalTurnaroundNano / processesLaunched) * 1000000000; //this is only part of it...
+	//int avgTurnaroundNano2 = (((double)totalTurnaroundSecs / processesLaunched) - avgTurnaroundSecs) * 1000000000;
+	
+	
+	
+	int avgTurnaroundNano = avgTurnaroundNano1 + avgTurnaroundNano2;
+	printf("Average Turnaround: %d:%d\n", avgTurnaroundSecs, avgTurnaroundNano);
+
+	/*printf("Total Wait Time: %.10f\n", totalWait);
+	double averageWait = (double)totalWait / processesLaunched;
+	printf("Average Wait Time: %.10f\n", averageWait);*/
+	
+	
 	printf("We leave at %d:%d\n", clockSeconds, clockNano); 
 	printf("That concludes this portion of the in-development program\n");
 	printf("End of program\n");
