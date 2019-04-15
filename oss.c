@@ -226,7 +226,9 @@ int main(int argc, char *argv[]) {
 	bool prepNewChild = false;
 	
 	//double totalTurnaround, totalWait, totalSleep, totalIdle;
-	int totalTurnaroundSecs, totalTurnaroundNano, totalWaitSecs, totalWaitNano, totalSleepSecs, totalSleepNano;
+	int totalTurnaroundSecs, totalTurnaroundNano, totalWaitSecs, totalWaitNano, totalSleepSecs, totalSleepNano, totalIdleSecs, totalIdleNano;
+	int idleStartSecs = -1;
+	int idleStartNano = 0;
 	
 	int processesLaunched = 0;
 	int processesRunning = 0;
@@ -322,6 +324,26 @@ int main(int argc, char *argv[]) {
 		}
 		
 		if (whichQueueInUse != -1) {
+			//first we check if we were idle before, and if so, we update our idle time
+			if (idleStartSecs > -1) { //we were idle
+				int idleSecs, idleNano;
+				if (clockNano > idleStartNano) {
+					idleNano = clockNano - idleStartNano;
+					idleSecs = clockSeconds - idleStartSecs;
+				} else {
+					idleNano = clockNano + 1000000000 - idleStartNano;
+					idleSecs = clockSeconds - 1 - idleStartSecs;
+				}
+				totalIdleSecs += idleSecs;
+				totalIdleNano += idleNano;
+				if (totalIdleNano >= 1000000000) { //increment the next unit
+					totalIdleSecs += 1;
+					totalIdleNano -= 1000000000;
+				}
+				printf("Added %d:%d to total idle\n", idleSecs, idleNano);
+				idleStartSecs = -1; //reset the counter
+			}
+			
 			int nextPID;
 			switch(whichQueueInUse) {
 				case 0 :
@@ -541,6 +563,9 @@ int main(int argc, char *argv[]) {
 					}
 				}	
 			}
+		} else { //our system is idle
+			idleStartSecs = clockSeconds;
+			idleStartNano = clockNano;
 		}
 		
 		//now we check if there are any blocked processes we need to start up
@@ -628,7 +653,14 @@ int main(int argc, char *argv[]) {
 	int avgSleepNano1 = ((double)totalSleepNano / processesLaunched);
 	int avgSleepNano2 = (((double)totalSleepSecs / processesLaunched) - avgSleepSecs) * 1000000000;
 	int avgSleepNano = avgSleepNano1 + avgSleepNano2;
-	printf("Average Wait Time: %d:%d\n", avgSleepSecs, avgSleepNano);
+	printf("Average Sleep Time: %d:%d\n", avgSleepSecs, avgSleepNano);
+	
+	printf("Total System Idle Time: %d:%d\n", totalIdleSecs, totalIdleNano);
+	int avgIdleSecs = totalIdleSecs / processesLaunched;
+	int avgIdleNano1 = ((double)totalIdleNano / processesLaunched);
+	int avgIdleNano2 = (((double)totalIdleSecs / processesLaunched) - avgIdleSecs) * 1000000000;
+	int avgIdleNano = avgIdleNano1 + avgIdleNano2;
+	printf("Average Wait Time: %d:%d\n", avgIdleSecs, avgIdleNano);
 	
 	
 	printf("We leave at %d:%d\n", clockSeconds, clockNano); 
