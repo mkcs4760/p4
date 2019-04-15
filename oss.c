@@ -225,7 +225,7 @@ int main(int argc, char *argv[]) {
 	bool prepNewChild = false;
 	
 	double totalTurnaround, totalWait, totalSleep, totalIdle;
-	int totalTurnaroundSecs, totalTurnaroundNano;
+	int totalTurnaroundSecs, totalTurnaroundNano, totalWaitSecs, totalWaitNano;
 	
 	int processesLaunched = 0;
 	int processesRunning = 0;
@@ -255,7 +255,7 @@ int main(int argc, char *argv[]) {
 			//printf("We have set a time to launch a new child\n");
 		} 
 		else if ((stopSeconds < clockSeconds) || ((stopSeconds == clockSeconds) && (stopNano < clockNano))) {
-			if (processesLaunched < 100) {
+			if (processesLaunched < 10) {
 				//time to launch the process
 				
 				//find out which PCT slot is free
@@ -287,7 +287,7 @@ int main(int argc, char *argv[]) {
 						PCT[openSlot].timeCreatedNano = clockNano;
 						PCT[openSlot].pauseSecs = clockSeconds;
 						PCT[openSlot].pauseNano = clockNano;
-						printf("Setting pause time for PCT[%d] to %d:%d, or %d:%d\n", openSlot, PCT[openSlot].pauseSecs, PCT[openSlot].pauseNano, clockSeconds, clockNano);
+						printf("First Setting pause time for PCT[%d] to %d:%d, or %d:%d\n", openSlot, PCT[openSlot].pauseSecs, PCT[openSlot].pauseNano, clockSeconds, clockNano);
 						if (randomNum(5) == 1) { //let's randomly determine if this child should be high priority or not
 							printf("OSS : Generating process with PID %d and putting it in queue #0 at time %d:%d\n", pid, clockSeconds, clockNano);
 							PCT[openSlot].processPriority = 0;
@@ -345,13 +345,30 @@ int main(int argc, char *argv[]) {
 			for (k = 0; k < sizeof(PCT); k++) {
 				if (PCT[k].myPID == nextPID) {
 					double pauseDouble = PCT[k].pauseSecs + ((double)PCT[k].pauseNano / 1000000000); //this format appears to work
-					printf("Receiving pause time from %d is %d:%d, or %.10f\n", nextPID, PCT[k].pauseSecs, PCT[k].pauseNano, pauseDouble);
+					//printf("Receiving pause time from %d is %d:%d, or %.10f\n", nextPID, PCT[k].pauseSecs, PCT[k].pauseNano, pauseDouble);
 					double unpauseDouble = clockSeconds + ((double)clockNano / 1000000000);
 					double waitTime = unpauseDouble - pauseDouble;
-					printf("Process %d paused at %.10f and unpaused at %.10f\n", nextPID, pauseDouble, unpauseDouble);
+					//printf("Process %d paused at %.10f and unpaused at %.10f\n", nextPID, pauseDouble, unpauseDouble);
 					//printf("Adding %.10f to totalWait\n", waitTime);
 					totalWait += waitTime; //not done with this, but getting somewhere
 					//remove everything else from this block of the table
+					
+					int waitSecs, waitNano;
+					if (clockNano > PCT[k].pauseNano) {
+						waitNano = clockNano - PCT[k].pauseNano;
+						waitSecs = clockSeconds - PCT[k].pauseSecs;
+					} else {
+						waitNano = clockNano + 1000000000 - PCT[k].pauseNano;
+						waitSecs = clockSeconds - 1 - PCT[k].pauseSecs;
+					}
+					totalWaitSecs += waitSecs;
+					totalWaitNano += waitNano;
+					if (totalWaitNano >= 1000000000) { //increment the next unit
+						totalWaitSecs += 1;
+						totalWaitNano -= 1000000000;
+					}
+					printf("Added %d:%d to total wait time\n", waitSecs, waitNano);
+					
 					break;
 				}
 			}
@@ -382,12 +399,7 @@ int main(int argc, char *argv[]) {
 					if (PCT[j].myPID == nextPID) {
 						boolArray[j] = false;
 						PCT[j].myPID = 0; //remove PID value from this slot
-						double startDouble = PCT[j].timeCreatedSecs + ((double)PCT[j].timeCreatedNano / 1000000000); //this format appears to work
-						double endDouble = clockSeconds + ((double)clockNano / 1000000000);
-						double turnAround = endDouble - startDouble;
-						printf("Adding %.10f to totalTurnaround\n", turnAround);
-						totalTurnaround += turnAround; //not done with this, but getting somewhere
-						
+
 						int turnAroundSecs, turnAroundNano;
 						if (clockNano > PCT[j].timeCreatedNano) {
 							turnAroundNano = clockNano - PCT[j].timeCreatedNano;
@@ -402,6 +414,7 @@ int main(int argc, char *argv[]) {
 							totalTurnaroundSecs += 1;
 							totalTurnaroundNano -= 1000000000;
 						}
+						printf("Added %d:%d to total turnaround\n", turnAroundSecs, turnAroundNano);
 						
 						
 						
@@ -433,7 +446,7 @@ int main(int argc, char *argv[]) {
 				for (k = 0; k < sizeof(PCT); k++) {
 					if (PCT[k].myPID == nextPID) { //reset the pause values to calculate wait time
 						PCT[k].pauseSecs = clockSeconds;
-						PCT[k].pauseSecs = clockNano;
+						PCT[k].pauseNano = clockNano;
 						printf("2Setting pause time for %d to %d:%d, or %d:%d\n", nextPID, PCT[k].pauseSecs, PCT[k].pauseNano, clockSeconds, clockNano);
 						break;
 					}
@@ -495,7 +508,7 @@ int main(int argc, char *argv[]) {
 				for (k = 0; k < sizeof(PCT); k++) {
 					if (PCT[k].myPID == nextPID) { //reset the pause values to calculate wait time
 						PCT[k].pauseSecs = clockSeconds;
-						PCT[k].pauseSecs = clockNano;
+						PCT[k].pauseNano = clockNano;
 						printf("1Setting pause time for %d to %d:%d, or %d:%d\n", nextPID, PCT[k].pauseSecs, PCT[k].pauseNano, clockSeconds, clockNano);
 						break;
 					}
@@ -557,37 +570,30 @@ int main(int argc, char *argv[]) {
 		}
 		
 		//now we check to see if we are done
-		if (processesLaunched > 99 && processesRunning == 0) { //terminates when we've launched and completed 10 processes.
+		if (processesLaunched > 9 && processesRunning == 0) { //terminates when we've launched and completed 10 processes.
 			done = 1;
 			printf("We are done with our loop\n");
 		}
 		
 	}
 	
-	printf("Total Turnaround: %.10f\n", totalTurnaround);
-	double averageTurnaround = (double)totalTurnaround / processesLaunched;
-	printf("Average Turnaround: %.10f\n", averageTurnaround);
-	
 	printf("Total Turnaround: %d:%d\n", totalTurnaroundSecs, totalTurnaroundNano);
 	int avgTurnaroundSecs = totalTurnaroundSecs / processesLaunched;
-	
-	//int avgTurnaroundNano1 = ((double)totalTurnaroundNano / processesLaunched) * 1000000000; //this is only part of it...
 	int avgTurnaroundNano1 = ((double)totalTurnaroundNano / processesLaunched);
 	int avgTurnaroundNano2 = (((double)totalTurnaroundSecs / processesLaunched) - avgTurnaroundSecs) * 1000000000;
-	 
-	
-	
-	//int avgTurnaroundNano1 = ((double)totalTurnaroundNano / processesLaunched) * 1000000000; //this is only part of it...
-	//int avgTurnaroundNano2 = (((double)totalTurnaroundSecs / processesLaunched) - avgTurnaroundSecs) * 1000000000;
-	
-	
-	
 	int avgTurnaroundNano = avgTurnaroundNano1 + avgTurnaroundNano2;
 	printf("Average Turnaround: %d:%d\n", avgTurnaroundSecs, avgTurnaroundNano);
 
-	/*printf("Total Wait Time: %.10f\n", totalWait);
+	printf("Total Wait Time: %.10f\n", totalWait);
 	double averageWait = (double)totalWait / processesLaunched;
-	printf("Average Wait Time: %.10f\n", averageWait);*/
+	printf("Average Wait Time: %.10f\n", averageWait);
+	
+	printf("Total Wait Time: %d:%d\n", totalWaitSecs, totalWaitNano);
+	int avgWaitSecs = totalWaitSecs / processesLaunched;
+	int avgWaitNano1 = ((double)totalWaitNano / processesLaunched);
+	int avgWaitNano2 = (((double)totalWaitSecs / processesLaunched) - avgWaitSecs) * 1000000000;
+	int avgWaitNano = avgWaitNano1 + avgWaitNano2;
+	printf("Average Wait Time: %d:%d\n", avgWaitSecs, avgWaitNano);
 	
 	
 	printf("We leave at %d:%d\n", clockSeconds, clockNano); 
